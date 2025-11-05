@@ -11,6 +11,7 @@ import os
 import math
 
 import openai
+import argparse
 from tqdm import tqdm
 
 from llava.constants import (
@@ -424,7 +425,7 @@ def chat_compeletion_openai(model, messages, temperature, max_tokens):
     return output
 
 
-def evaluate_model_safety(model, datasets, output_dir="safety_evaluation_results", is_safety_prefix=False, is_safety_steer=False, K=4, target_layers=[14]):
+def evaluate_model_safety(model, datasets, output_dir="safety_evaluation_results", is_safety_prefix=False, is_safety_steer=False, K=4, target_layers=[14], init_alpha=1.0):
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     
@@ -448,7 +449,7 @@ def evaluate_model_safety(model, datasets, output_dir="safety_evaluation_results
 
             
             # Generate response
-            response = model.generate(sample, is_safety_prefix=is_safety_prefix, is_safety_steer=is_safety_steer, target_layers=target_layers, init_alpha=1.0, K=K)
+            response = model.generate(sample, is_safety_prefix=is_safety_prefix, is_safety_steer=is_safety_steer, target_layers=target_layers, init_alpha=init_alpha, K=K)
             # print(f"Response for sample {i}: {response}")
 
 
@@ -551,20 +552,57 @@ def analyze_results(results):
 
     return summary
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Evaluate LLaVA model safety with optional steering.")
+    
+    # Model Paths
+    parser.add_argument("--model-path", type=str, default="llava-v1.5-7b", 
+                        help="Path to the LLaVA model directory.")
+    parser.add_argument("--classifier-path", type=str, 
+                        default="train_classifier/classifier/best_model/newer/fused_4_classifier_checkpoints_mix_modify_loss/best_model.pth", 
+                        help="Path to the trained MLP classifier .pth file.")
+    parser.add_argument("--svd-components-path", type=str, 
+                        default="SVD_steer_vector/intermediate_results/svd_components_llava.pt", 
+                        help="Path to the SVD components .pt file for steering.")
+
+    # Model & Steering Config
+    parser.add_argument("--model-name", type=str, default="llava", 
+                        help="Model name identifier for loading datasets.")
+    parser.add_argument("--k-last-layers", type=int, default=4, 
+                        help="Number of last layers to use for the classifier.")
+    parser.add_argument("--target-layers", type=int, nargs='+', default=[14], 
+                        help="List of layer indices to apply steering hooks.")
+    parser.add_argument("--num-top-components", type=int, default=5, 
+                        help="Number of top SVD components to use for the steering subspace.")
+    
+    # Evaluation Flags
+    parser.add_argument("--is-safety-prefix", action='store_true', 
+                        help="Enable the safety prefix baseline defense.")
+    parser.add_argument("--is-safety-steer", action='store_true', 
+                        help="Enable the safety steering defense.")
+    parser.add_argument("--init-alpha", type=float, default=1.0, 
+                        help="Initial alpha value for safety steering.")
+    
+    # Misc
+    parser.add_argument("--seed", type=int, default=42, 
+                        help="Random seed for reproducibility.")
+
+    return parser.parse_args()
+
 
 if __name__ == "__main__":
     # Path to model
-    model_path = "/home/zengxiyu24/RobustVLM/llava-v1.5-7b"
-    K_LAST_LAYERS = 4
-    CLASSIFIER_PATH = "train_classifier/classifier/best_model/newer/fused_4_classifier_checkpoints_mix_modify_loss/best_model.pth"
-    SVD_COMPONENTS_PATH = "SVD_steer_vector/intermediate_results/svd_components_llava.pt"
-    target_layers = [14]
-    random.seed(42)
+    args = parse_args()
+    # model_path = "llava-v1.5-7b"
+    # K_LAST_LAYERS = 4
+    # CLASSIFIER_PATH = "train_classifier/classifier/best_model/newer/fused_4_classifier_checkpoints_mix_modify_loss/best_model.pth"
+    # SVD_COMPONENTS_PATH = "SVD_steer_vector/intermediate_results/svd_components_llava.pt"
+    # target_layers = [14]
+    # random.seed(42)
     
     # Initialize model
-    model = LLaVA(model_path, CLASSIFIER_PATH, SVD_COMPONENTS_PATH, K_LAST_LAYERS, target_layers=target_layers, num_top_components=5)
-    model_name = "llava"
-    base_file = "safety_evaluation_results_llava_safety_prefix"
+    model = LLaVA(args.model_path, args.classifier_path, args.svd_components_path, args.k_last_layers, target_layers=args.target_layers, num_top_components=args.num_top_components)
+    model_name = args.model_name
     
     # Load datasets
     datasets = {}
@@ -586,7 +624,7 @@ if __name__ == "__main__":
     
     # Run evaluation
     print("Starting safety evaluation...")
-    results = evaluate_model_safety(model, datasets, output_dir, is_safety_prefix=False, is_safety_steer=False, K=K_LAST_LAYERS, target_layers=target_layers)
+    results = evaluate_model_safety(model, datasets, output_dir, is_safety_prefix=args.is_safety_prefix, is_safety_steer=args.is_safety_steer, K=args.k_last_layers, target_layers=args.target_layers, init_alpha=args.init_alpha)
 
     # Analyze results
     print("Analyzing results...")
