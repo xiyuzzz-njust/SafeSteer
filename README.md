@@ -1,2 +1,2 @@
 # AEGIS
-the code for Adaptive Safety Subspace Steering: A Multi-Dimensional Defense Framework for Vision Language Models
+the code for SafeSteer: Adaptive Subspace Steering for Efficient Jailbreak Defense in Vision Language Models
